@@ -12,6 +12,13 @@ class Model(scope: CoroutineScope) : ViewModel() {
         START_CAMERA, WAIT_FOR_CAR_FIRST_PASS, RUNNING, STOPPED
     }
 
+    class LapInfo {
+        var lapIndex = 0
+        var lapTime = 0.0
+        var speed = 0.0
+        var diff = 0.0
+    }
+
     val timerState = mutableStateOf(TimerState.STOPPED)
 
     private var timeElapsed = mutableStateOf(0.0)
@@ -28,7 +35,8 @@ class Model(scope: CoroutineScope) : ViewModel() {
     val targetLapCount = mutableStateOf(0)
     val lapCount = mutableStateOf(0)
     val lastLapTime = mutableStateOf(0.0)
-    val lapTimes = mutableListOf<Double>()
+    val lapTimes = mutableListOf<LapInfo>()
+    val minLapInterval = mutableStateOf(0.3)
 
     fun getTimeElapsed(): Double = timeElapsed.value
 
@@ -58,7 +66,7 @@ class Model(scope: CoroutineScope) : ViewModel() {
             timerLogic.start()
             Log.d("Model", "Car pass, start timer")
         } else {
-            if (timeElapsed.value - lastCarPassElapsed.value > 1) {
+            if (timeElapsed.value - lastCarPassElapsed.value > minLapInterval.value) {
                 recordLap()
             } else {
                 // Ignore the car pass event if it happens within 1 second
@@ -68,12 +76,17 @@ class Model(scope: CoroutineScope) : ViewModel() {
 
     private fun recordLap() {
         lastCarPassElapsed.value = timeElapsed.value
-        val lapTime = timeElapsed.value - lastLapTime.value
+        val curLapTime = timeElapsed.value - lastLapTime.value
         lastLapTime.value = timeElapsed.value
-        lapTimes.add(lapTime)
+        lapTimes.add(LapInfo().apply {
+            lapIndex = lapCount.value
+            lapTime = curLapTime
+            speed = carAnalyzer.speed.doubleValue
+            diff = carAnalyzer.backgroundDiff.doubleValue
+        })
         lapCount.value = lapTimes.size
 
-        Log.d("Model", "Lap $lapCount: ${"%.2f".format(lapTime)}s")
+        Log.d("Model", "Lap $lapCount: ${"%.2f".format(curLapTime)}s")
 
         if (targetLapCount.value > 0 && lapCount.value >= targetLapCount.value) {
             Log.d("Model", "Target lap count reached, stop record.")
@@ -82,11 +95,11 @@ class Model(scope: CoroutineScope) : ViewModel() {
     }
 
     fun fastestLap(): Double? {
-        return lapTimes.minOrNull()
+        return lapTimes.minByOrNull { it.lapTime }?.lapTime
     }
 
     fun averageLap(): Double {
-        return lapTimes.average()
+        return lapTimes.map { it.lapTime }.average()
     }
 
     fun stop() {

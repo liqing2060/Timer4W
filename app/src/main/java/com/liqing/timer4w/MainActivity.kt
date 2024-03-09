@@ -21,7 +21,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -83,7 +85,7 @@ fun AppContent(
                 model,
                 cameraExecutor,
                 modifier = Modifier
-                    .height(300.dp)
+                    .height(320.dp)
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
             )
@@ -182,25 +184,37 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
         }
 
         if (model.isStopped() || !permissionState.value) {
-            // 权限未被授予或者相机没有开始，显示文本提示
-            Text(
-                text = "Camera Preview",
-                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
-                modifier = Modifier.align(Alignment.Center)
-            )
+            var tipString = "Camera Preview"
+            var fontSize = 20.sp
+            // 如果有圈数数据，展示详细的信息
+            if (model.lapCount.value > 0) {
+                fontSize = 16.sp
+                tipString = "Lap Details"
+                for (lap in model.lapTimes) {
+                    tipString += "\nLap ${lap.lapIndex}: ${"%.2f".format(lap.lapTime)} s" + " Speed: ${"%.2f".format(lap.speed)}" + " Diff: ${"%.2f".format(lap.diff)}"
+                }
+                Column(modifier = Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)) {
+                    Text(
+                        text = tipString,
+                        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
+                    )
+                }
+            } else {
+                // 权限未被授予或者相机没有开始，显示文本提示
+                Text(
+                    text = tipString,
+                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize),
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            }
         }
     }
 }
 
 @Composable
 fun LapInfo(model: Model) {
-
-    // 检查是否有圈速数据
-    val hasLaps = model.lapTimes.isNotEmpty()
-
-    // 计算最快圈速
-    val fastestLapTime = if (hasLaps) model.lapTimes.minOrNull() ?: 0.0 else 0.0
-
     Column(
         modifier = Modifier.padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -218,7 +232,11 @@ fun LapInfo(model: Model) {
             style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
         )
         Text(
-            text = "Fastest Lap: ${"%.2f".format(fastestLapTime)} s",
+            text = "Average Lap: ${"%.2f".format(model.averageLap())} s",
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+        )
+        Text(
+            text = "Fastest Lap: ${"%.2f".format(model.fastestLap())} s",
             style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
         )
     }
