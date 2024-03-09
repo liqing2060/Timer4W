@@ -20,7 +20,7 @@ class Model(scope: CoroutineScope) : ViewModel() {
         timeElapsed.value = time
     }, coroutineScope = scope)
 
-    private val carAnalyzer = CarAnalyzer(diffThreshold = 10.0, onCarDetected = {
+    private val carAnalyzer = CarAnalyzer(diffThreshold = 0.5, onCarDetected = {
         onCarPass()
     })
     private val analysisSkippedFrameCount = mutableStateOf(0)
