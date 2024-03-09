@@ -3,7 +3,6 @@ import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.compose.runtime.mutableDoubleStateOf
-import androidx.compose.runtime.mutableStateOf
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -19,7 +18,8 @@ class CarAnalyzer(
 
     private var lastFrame: Mat? = null
     private var prevForeground: Mat? = null
-    var curDiff = mutableDoubleStateOf(0.0)
+    var speed = mutableDoubleStateOf(0.0)
+    var backgroundDiff = mutableDoubleStateOf(0.0)
 
     private fun imageProxyToMat(image: ImageProxy): Mat? {
         if (image.format == ImageFormat.YUV_420_888) {
@@ -59,8 +59,8 @@ class CarAnalyzer(
             Core.normalize(diff, diff, 0.0, 255.0, Core.NORM_MINMAX)
             val mean = Core.mean(diff).`val`[0]
             diff.release()
-            curDiff.doubleValue = mean
-            Log.d("CarAnalyzer", "Mean diff: " + "%.2f".format(curDiff.doubleValue))
+            speed.doubleValue = mean
+            Log.d("CarAnalyzer", "Mean diff: " + "%.2f".format(speed.doubleValue))
             return mean > diffThreshold
         }
         return false
@@ -75,37 +75,34 @@ class CarAnalyzer(
         val fgMask = Mat()
         backgroundSubtractor.apply(grayFrame, fgMask)
 
-        // 步骤2：提取前景
+        // 步骤2：计算整体变化量
+        backgroundDiff.doubleValue = Core.countNonZero(fgMask).toDouble() / (fgMask.rows() * fgMask.cols())
+
+        // 步骤3：提取前景
         val foreground = Mat()
         grayFrame.copyTo(foreground, fgMask)
 
-        // 步骤3：光流法计算前景区域的光流
-        if (prevForeground == null) {
+        // 如果背景变化太大，可能是因为拿着相机移动
+        val BACKGROUND_CHANGE_THRESHOLD = 0.2
+        if (prevForeground == null || backgroundDiff.doubleValue > BACKGROUND_CHANGE_THRESHOLD) {
+            prevForeground?.release() // 释放前一帧前景图像资源
             prevForeground = foreground.clone()
-            return false
+            fgMask.release()
+            grayFrame.release()
+            return false // 跳过运动分析
         }
 
         val flow = Mat()
-        // 确保前一帧前景和当前帧前景大小一致
-        if (prevForeground!!.size() != foreground.size()) {
-            // 处理大小不一致的情况
-            return false
-        }
-        // 应用光流法
         Video.calcOpticalFlowFarneback(prevForeground, foreground, flow, 0.5, 3, 15, 3, 5, 1.2, 0)
 
-        // 步骤4：分析光流结果，判断四驱车运动
+        // 分析光流结果，判断四驱车运动
         val ret = analyzeOpticalFlow(flow)
+        flow.release()
+        prevForeground!!.release() // 释放前一帧前景资源
+        prevForeground = foreground // 更新前一帧为当前帧
 
-        // 更新前一帧的前景
-        prevForeground!!.release() // 释放旧的前景内存
-        prevForeground = foreground // 更新前景
-
-        // 释放资源
         fgMask.release()
         grayFrame.release()
-        flow.release()
-
         return ret
     }
 
@@ -129,9 +126,9 @@ class CarAnalyzer(
         val avgX = sumX / count
         val avgY = sumY / count
         val avgMotionMagnitude = Math.sqrt(avgX * avgX + avgY * avgY) // 平均运动向量的大小，可以用来估计速度
-        curDiff.doubleValue = avgMotionMagnitude
+        speed.doubleValue = avgMotionMagnitude
 
-        Log.d("CarAnalyzer", "avgMotionMagnitude: " + "%.2f".format(curDiff.doubleValue))
+        Log.d("CarAnalyzer", "avgMotionMagnitude: " + "%.2f".format(speed.doubleValue))
 
         // 根据平均运动向量的大小决定是否检测到高速通过的四驱车
         if (avgMotionMagnitude >= diffThreshold) {
@@ -164,6 +161,7 @@ class CarAnalyzer(
         lastFrame = null
         prevForeground?.release()
         prevForeground = null;
-        curDiff.doubleValue = 0.0
+        speed.doubleValue = 0.0
+        backgroundDiff.doubleValue = 0.0
     }
 }

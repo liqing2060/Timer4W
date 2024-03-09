@@ -107,6 +107,6 @@ class Model(scope: CoroutineScope) : ViewModel() {
     }
 
     fun debugInfo() : String {
-        return "diff:" + "%.2f".format(carAnalyzer.curDiff.doubleValue) // "%.2f".format(carAnalyzer.curDiff)
+        return "speed:" + "%.2f".format(carAnalyzer.speed.doubleValue) + " diff:" + "%.2f".format(carAnalyzer.backgroundDiff.doubleValue)
     }
 }
