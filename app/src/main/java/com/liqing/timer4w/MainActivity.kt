@@ -1,5 +1,7 @@
 package com.liqing.timer4w
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.util.Log
@@ -17,18 +19,25 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -53,9 +62,10 @@ class MainActivity : ComponentActivity() {
         } else {
             Log.d("OpenCV", "OpenCV loaded successfully!")
         }
+        val sharedPreferences = getSharedPreferences("Timer4W", Context.MODE_PRIVATE)
         setContent {
             Timer4WTheme {
-                AppContent()
+                AppContent(sharedPreferences)
             }
         }
     }
@@ -63,6 +73,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun AppContent(
+    sharedPreferences: SharedPreferences?,
     model: Model = Model(rememberCoroutineScope()),
     cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 ) {
@@ -72,19 +83,25 @@ fun AppContent(
                 model,
                 cameraExecutor,
                 modifier = Modifier
-                    .weight(1f)
-                    .height(180.dp)
+                    .height(300.dp)
                     .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
             )
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Timer(model);
+            LapInfo(model)
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            Buttons(model, sharedPreferences)
 
             Spacer(modifier = Modifier.height(100.dp))
 
-            Text(text = model.debugInfo(),
-                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp))
+            Text(
+                text = model.debugInfo(),
+                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            )
         }
     }
 }
@@ -103,6 +120,7 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
 
     Box(modifier = modifier) {
         if (!model.isStopped()) {
+
             // 创建一个启动器用于请求权限
             val permissionLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.RequestPermission(),
@@ -175,8 +193,41 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
 }
 
 @Composable
-fun Timer(model: Model) {
+fun LapInfo(model: Model) {
 
+    // 检查是否有圈速数据
+    val hasLaps = model.lapTimes.isNotEmpty()
+
+    // 计算最快圈速
+    val fastestLapTime = if (hasLaps) model.lapTimes.minOrNull() ?: 0.0 else 0.0
+
+    Column(
+        modifier = Modifier.padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = "Lap Count: ${model.lapCount.value}" + if (model.targetLapCount.value > 0) "/${model.targetLapCount.value}" else "",
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+        )
+        Text(
+            text = "Total Time: ${"%.2f".format(model.getTimeElapsed())} s",
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+        )
+        Text(
+            text = "Current Lap: ${"%.2f".format(model.getCurLapTimeElapsed())} s",
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+        )
+        Text(
+            text = "Fastest Lap: ${"%.2f".format(fastestLapTime)} s",
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+        )
+    }
+}
+
+@Composable
+fun Buttons(model: Model, sharedPreferences: SharedPreferences?) {
+
+    // 显示状态
     val tipText: String = when (model.timerState.value) {
         Model.TimerState.START_CAMERA -> {
             "Wait for the camera to start."
@@ -194,19 +245,9 @@ fun Timer(model: Model) {
             "Press start to record."
         }
     }
-
-    // 权限未被授予或者相机没有开始，显示文本提示
     Text(
         text = tipText,
         style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
-    )
-
-    Spacer(modifier = Modifier.height(20.dp))
-
-    // 显示计时器时间
-    Text(
-        text = "${"%.2f".format(model.getTimeElapsed())} s",
-        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
     )
 
     Spacer(modifier = Modifier.height(20.dp))
@@ -227,12 +268,51 @@ fun Timer(model: Model) {
             style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
         )
     }
+
+    Spacer(modifier = Modifier.height(20.dp))
+
+    // 目标圈数
+    val lapOptions = List(11) { it * 10 }
+    // 读取保存的索引，如果不存在则默认为0（对应0圈）
+    val savedIndex = sharedPreferences?.getInt("targetLapCountIndex", 0) ?: 0
+    var expanded by remember { mutableStateOf(false) }
+    var selectedIndex by remember { mutableStateOf(savedIndex) }
+
+    // 设置model中的targetLapCount为当前选择的圈数
+    LaunchedEffect(selectedIndex) {
+        model.targetLapCount.value = lapOptions[selectedIndex]
+        // 保存当前选择的索引到本地
+        sharedPreferences?.edit()?.putInt("targetLapCountIndex", selectedIndex)?.apply()
+    }
+
+    // UI 组件，包括下拉菜单等
+    Column {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }) {
+            lapOptions.forEachIndexed { index, lapCount ->
+                DropdownMenuItem(
+                    onClick = {
+                        selectedIndex = index
+                        expanded = false
+                    }, text = {
+                        Text("$lapCount Laps")
+                    }
+                )
+            }
+        }
+    }
+
+    Button(onClick = { expanded = true })
+    {
+        Text("Select Lap: ${lapOptions[selectedIndex]}")
+    }
 }
 
 @Preview(showBackground = true)
 @Composable
 fun DefaultPreview() {
     Timer4WTheme {
-        AppContent()
+        AppContent(null)
     }
 }

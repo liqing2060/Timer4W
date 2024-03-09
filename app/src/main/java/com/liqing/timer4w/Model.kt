@@ -25,12 +25,14 @@ class Model(scope: CoroutineScope) : ViewModel() {
     })
 
     private val lastCarPassElapsed = mutableStateOf(0.0)
-    val lapCount = mutableStateOf(0)
     val targetLapCount = mutableStateOf(0)
-    private val lastLapTime = mutableStateOf(0.0)
+    val lapCount = mutableStateOf(0)
+    val lastLapTime = mutableStateOf(0.0)
     val lapTimes = mutableListOf<Double>()
 
     fun getTimeElapsed(): Double = timeElapsed.value
+
+    fun getCurLapTimeElapsed(): Double = timeElapsed.value - lastLapTime.value
 
     fun isStopped() = timerState.value == TimerState.STOPPED
 
@@ -88,13 +90,13 @@ class Model(scope: CoroutineScope) : ViewModel() {
     }
 
     fun stop() {
-        timeElapsed.value = 0.0
         timerState.value = TimerState.STOPPED
         timerLogic.stop()
     }
 
     private fun resetData() {
         timeElapsed.value = 0.0
+        lastLapTime.value = 0.0
         lastCarPassElapsed.value = 0.0
         lapCount.value = 0
         lapTimes.clear()
