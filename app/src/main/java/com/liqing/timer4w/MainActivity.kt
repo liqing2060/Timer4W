@@ -92,71 +92,40 @@ fun TimerDisplay() {
 
 @Composable
 fun Timer() {
-    var start by remember { mutableStateOf(false) }
-    var timeElapsed by remember { mutableStateOf(0.0) } // Use double for higher precision
+    var timeElapsed by remember { mutableStateOf(0.0) }
     val scope = rememberCoroutineScope()
-    var startTime by remember { mutableStateOf(0L) }
-    var job: Job? by remember { mutableStateOf(null) }
 
-    // Handle lifecycle to cancel coroutine when the app is not in the foreground
-    val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_DESTROY) {
-                job?.cancel()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
+    // 创建TimerLogic实例
+    val timerLogic = remember { TimerLogic(update = { time ->
+        timeElapsed = time
+    }, coroutineScope = scope) }
 
-    // Format the time elapsed to two decimal places
+    var start by remember { mutableStateOf(false) }
+
+    // 显示计时器时间
     Text(
         text = "${"%.2f".format(timeElapsed)} s",
-        style = TextStyle(
-            fontFamily = FontFamily.Monospace,
-            fontSize = 20.sp
-        )
+        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
     )
 
     Spacer(modifier = Modifier.height(24.dp))
 
+    // 开始/停止按钮
     Button(
         onClick = {
             start = !start
             if (start) {
-                // Save the start time
-                startTime = System.currentTimeMillis()
-                // Start the timer
-                job = scope.launch(Dispatchers.Default) {
-                    while (isActive) {
-                        // Calculate elapsed time
-                        val now = System.currentTimeMillis()
-                        timeElapsed = (now - startTime) / 1000.0 // Convert to seconds
-                        delay(10) // Smaller delay for higher precision
-                    }
-                }
+                timerLogic.start()
             } else {
-                // Stop the timer
-                job?.cancel()
+                timerLogic.stop()
             }
         },
-        modifier = Modifier.size(
-            width = 240.dp,
-            height = 100.dp
-        )
-    )
-    {
+        modifier = Modifier.size(width = 240.dp, height = 100.dp)
+    ) {
         Text(
             text = if (start) "Stop" else "Start",
-            style = TextStyle(
-                fontFamily = FontFamily.Monospace,
-                fontSize = 20.sp
-            ),
-
-            )
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+        )
     }
 
     Spacer(modifier = Modifier.height(150.dp))
