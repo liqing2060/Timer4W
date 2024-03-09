@@ -1,8 +1,14 @@
 package com.liqing.timer4w
 
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -15,7 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,20 +29,17 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.LifecycleOwner
 import com.liqing.timer4w.ui.theme.Timer4WTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
+import androidx.camera.core.Preview as CameraXPreview
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -50,48 +53,77 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppContent() {
+fun AppContent(model: Model = Model()) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            CameraPreview(modifier = Modifier.weight(1f))
-//            StartButton()
-//            TimerDisplay()
-            Timer();
+            CameraPreview(model, modifier = Modifier.weight(1f).height(200.dp).fillMaxWidth())
+            Timer(model);
         }
     }
 }
 
 @Composable
-fun CameraPreview(modifier: Modifier = Modifier) {
-    // Placeholder for camera preview
-    // You should integrate the actual camera preview here
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(200.dp), contentAlignment = Alignment.Center
-    ) {
-        Text(text = "Camera Preview Placeholder")
+fun CameraPreview(model: Model, modifier: Modifier = Modifier) {
+    val startCamera by model.startTimer
+    val context = LocalContext.current
+    val permissionState = remember { mutableStateOf(ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
+
+    // 创建一个启动器用于请求权限
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                permissionState.value = true
+            } else {
+                permissionState.value = false
+                // 处理未授权的情况
+            }
+        }
+    )
+
+    // 检查权限并可能请求权限
+    LaunchedEffect(Unit) {
+        if (!permissionState.value) {
+            permissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
+
+    Box(modifier = modifier) {
+        if (startCamera && permissionState.value) {
+            // 权限被授予，显示相机预览
+            AndroidView(factory = { ctx ->
+                PreviewView(ctx).also { previewView ->
+                    val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                    cameraProviderFuture.addListener({
+                        val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+                        val preview = CameraXPreview.Builder().build().also {
+                            it.setSurfaceProvider(previewView.surfaceProvider)
+                        }
+                        try {
+                            // 默认选择后置相机
+                            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                            cameraProvider.unbindAll() // 在绑定之前解除绑定
+                            cameraProvider.bindToLifecycle(context as LifecycleOwner, cameraSelector, preview)
+                        } catch(e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }, ContextCompat.getMainExecutor(context))
+                }
+            }, modifier = Modifier.fillMaxSize()) // 确保预览填满Box
+        } else {
+            // 权限未被授予或者相机没有开始，显示文本提示
+            Text(
+                text = if (!permissionState.value) "No camera permission yet" else "Press start to record.",
+                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
     }
 }
 
 @Composable
-fun StartButton() {
-    // Example start button
-    Button(onClick = { /* Implement start/stop logic */ }) {
-        Text(text = "Start")
-    }
-}
-
-@Composable
-fun TimerDisplay() {
-    var timeElapsed by remember { mutableStateOf("0:00") }
-
-    // You can update `timeElapsed` based on your timing logic
-    Text(text = "Time Elapsed: $timeElapsed")
-}
-
-@Composable
-fun Timer() {
+fun Timer(model: Model) {
+    val startCamera by model.startTimer
     var timeElapsed by remember { mutableStateOf(0.0) }
     val scope = rememberCoroutineScope()
 
@@ -100,7 +132,7 @@ fun Timer() {
         timeElapsed = time
     }, coroutineScope = scope) }
 
-    var start by remember { mutableStateOf(false) }
+    Spacer(modifier = Modifier.height(24.dp))
 
     // 显示计时器时间
     Text(
@@ -113,8 +145,8 @@ fun Timer() {
     // 开始/停止按钮
     Button(
         onClick = {
-            start = !start
-            if (start) {
+            model.toggleTimer()
+            if (startCamera) {
                 timerLogic.start()
             } else {
                 timerLogic.stop()
@@ -123,7 +155,7 @@ fun Timer() {
         modifier = Modifier.size(width = 240.dp, height = 100.dp)
     ) {
         Text(
-            text = if (start) "Stop" else "Start",
+            text = if (startCamera) "Stop" else "Start",
             style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
         )
     }
