@@ -1,6 +1,7 @@
+import android.graphics.ImageFormat
+import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
-import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -10,28 +11,34 @@ class CarAnalyzer(val diffThreshold: Double, private val onCarDetected: () -> Un
 
     private var lastFrame: Mat? = null
 
-    private fun imageProxyToMat(image: ImageProxy): Mat {
-        val yBuffer = image.planes[0].buffer // Y
-        val ySize = yBuffer.remaining()
-        val yData = ByteArray(ySize)
-        yBuffer.get(yData)
-        val matY = Mat(image.height, image.width, CvType.CV_8UC1)
-        matY.put(0, 0, yData)
+    private fun imageProxyToMat(image: ImageProxy): Mat? {
+        if (image.format == ImageFormat.YUV_420_888) {
+            val yPlane = image.planes[0]
+            val uPlane = image.planes[1]
+            val vPlane = image.planes[2]
 
-        val uvBuffer = image.planes[1].buffer // UV
-        val uvSize = uvBuffer.remaining()
-        val uvData = ByteArray(uvSize)
-        uvBuffer.get(uvData)
-        val matUV = Mat(image.height / 2, image.width / 2, CvType.CV_8UC2)
-        matUV.put(0, 0, uvData)
+            val ySize = yPlane.buffer.remaining()
+            val uSize = uPlane.buffer.remaining()
+            val vSize = vPlane.buffer.remaining()
 
-        val mat = Mat()
-        Imgproc.cvtColorTwoPlane(matY, matUV, mat, Imgproc.COLOR_YUV2BGR_NV21)
+            val data = ByteArray(ySize + uSize + vSize)
 
-        matY.release()
-        matUV.release()
+            yPlane.buffer.get(data, 0, ySize)
+            vPlane.buffer.get(data, ySize, vSize)
+            uPlane.buffer.get(data, ySize + vSize, uSize)
 
-        return mat
+            val matYuv = Mat(image.height + image.height / 2, image.width, CvType.CV_8UC1)
+            matYuv.put(0, 0, data)
+
+            val matRgb = Mat()
+            Imgproc.cvtColor(matYuv, matRgb, Imgproc.COLOR_YUV2RGB_NV21, 3)
+
+            matYuv.release()
+            return matRgb
+        } else {
+            Log.e("CarAnalyzer", "Unsupported image format: ${image.format}")
+        }
+        return null
     }
 
     private fun detectCar(currentFrame: Mat): Boolean {
@@ -42,6 +49,7 @@ class CarAnalyzer(val diffThreshold: Double, private val onCarDetected: () -> Un
             Core.normalize(diff, diff, 0.0, 255.0, Core.NORM_MINMAX)
             val mean = Core.mean(diff).`val`[0]
             diff.release()
+            Log.d("CarAnalyzer", "Mean diff: $mean")
             return mean > diffThreshold
         }
         return false
@@ -49,12 +57,19 @@ class CarAnalyzer(val diffThreshold: Double, private val onCarDetected: () -> Un
 
     override fun analyze(imageProxy: ImageProxy) {
         val currentFrame = imageProxyToMat(imageProxy)
-        if (detectCar(currentFrame)) {
-            onCarDetected()
-        }
+        if (currentFrame != null) {
+            if (detectCar(currentFrame)) {
+                onCarDetected()
+            }
 
-        // Update the last frame reference
+            // Update the last frame reference
+            lastFrame?.release()
+            lastFrame = currentFrame
+        }
+    }
+
+    fun reset() {
         lastFrame?.release()
-        lastFrame = currentFrame
+        lastFrame = null
     }
 }

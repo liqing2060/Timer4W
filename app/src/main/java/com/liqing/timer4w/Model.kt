@@ -1,6 +1,7 @@
 package com.liqing.timer4w
 
 import CarAnalyzer
+import android.util.Log
 import androidx.camera.core.ImageProxy
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
@@ -19,9 +20,11 @@ class Model(scope: CoroutineScope) : ViewModel() {
         timeElapsed.value = time
     }, coroutineScope = scope)
 
-    private val carAnalyzer = CarAnalyzer(diffThreshold = 15.0, onCarDetected = {
+    private val carAnalyzer = CarAnalyzer(diffThreshold = 55.0, onCarDetected = {
         onCarPass()
     })
+    private val analysisSkippedFrameCount = mutableStateOf(0)
+
     private val lastCarPassElapsed = mutableStateOf(0.0)
     val lapCount = mutableStateOf(0)
     val targetLapCount = mutableStateOf(0)
@@ -43,7 +46,11 @@ class Model(scope: CoroutineScope) : ViewModel() {
     }
 
     fun analysis(imageProxy: ImageProxy) {
-        carAnalyzer.analyze(imageProxy)
+//        Log.d("Model", "Analysis")
+        analysisSkippedFrameCount.value += 1
+        if (analysisSkippedFrameCount.value >= 10) {
+            carAnalyzer.analyze(imageProxy)
+        }
     }
 
     fun onCarPass() {
@@ -91,5 +98,7 @@ class Model(scope: CoroutineScope) : ViewModel() {
         lastCarPassElapsed.value = 0.0
         lapCount.value = 0
         lapTimes.clear()
+        analysisSkippedFrameCount.value = 0
+        carAnalyzer.reset()
     }
 }

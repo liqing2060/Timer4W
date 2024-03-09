@@ -2,6 +2,7 @@ package com.liqing.timer4w
 
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -38,6 +39,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.liqing.timer4w.ui.theme.Timer4WTheme
+import org.opencv.android.OpenCVLoader
 import java.util.concurrent.ExecutorService
 import androidx.camera.core.Preview as CameraXPreview
 import java.util.concurrent.Executors
@@ -45,6 +47,12 @@ import java.util.concurrent.Executors
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 在这里加载OpenCV库
+        if (!OpenCVLoader.initLocal()) {
+            Log.e("OpenCV", "Unable to load OpenCV!")
+        } else {
+            Log.d("OpenCV", "OpenCV loaded successfully!")
+        }
         setContent {
             Timer4WTheme {
                 AppContent()
@@ -69,6 +77,8 @@ fun AppContent(
                     .fillMaxWidth()
             )
             Timer(model);
+
+            Spacer(modifier = Modifier.height(150.dp))
         }
     }
 }
@@ -117,6 +127,18 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
                             val preview = CameraXPreview.Builder().build().also {
                                 it.setSurfaceProvider(previewView.surfaceProvider)
                             }
+
+                            val imageAnalysis = ImageAnalysis.Builder()
+                                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                                .build()
+                                .also {
+                                    it.setAnalyzer(cameraExecutor) { imageProxy ->
+                                        // 使用OpenCV进行图像分析，检测四驱车
+                                        model.analysis(imageProxy)
+                                        imageProxy.close() // 完成分析后必须关闭imageProxy
+                                    }
+                                }
+
                             try {
                                 // 默认选择后置相机
                                 val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -124,7 +146,8 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
                                 cameraProvider.bindToLifecycle(
                                     context as LifecycleOwner,
                                     cameraSelector,
-                                    preview
+                                    preview,
+                                    imageAnalysis
                                 )
                             } catch (e: Exception) {
                                 e.printStackTrace()
@@ -132,18 +155,6 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
                         }, ContextCompat.getMainExecutor(context))
                     }
                 }, modifier = Modifier.fillMaxSize()) // 确保预览填满Box
-
-                ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .build()
-                    .also {
-                        it.setAnalyzer(cameraExecutor) { imageProxy ->
-//                            val rotationDegrees = imageProxy.imageInfo.rotationDegrees
-                            // 使用OpenCV进行图像分析，检测四驱车
-                            model.analysis(imageProxy)
-                            imageProxy.close() // 完成分析后必须关闭imageProxy
-                        }
-                    }
             }
         }
 
@@ -167,12 +178,15 @@ fun Timer(model: Model) {
         Model.TimerState.START_CAMERA -> {
             "Wait for the camera to start."
         }
+
         Model.TimerState.WAIT_FOR_CAR_FIRST_PASS -> {
             "Wait for the car."
         }
+
         Model.TimerState.RUNNING -> {
             "Recording..."
         }
+
         else -> {
             "Press start to record."
         }
@@ -210,8 +224,6 @@ fun Timer(model: Model) {
             style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
         )
     }
-
-    Spacer(modifier = Modifier.height(150.dp))
 }
 
 @Preview(showBackground = true)
