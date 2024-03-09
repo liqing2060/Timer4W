@@ -20,7 +20,7 @@ class Model(scope: CoroutineScope) : ViewModel() {
         timeElapsed.value = time
     }, coroutineScope = scope)
 
-    private val carAnalyzer = CarAnalyzer(diffThreshold = 55.0, onCarDetected = {
+    private val carAnalyzer = CarAnalyzer(diffThreshold = 10.0, onCarDetected = {
         onCarPass()
     })
     private val analysisSkippedFrameCount = mutableStateOf(0)
@@ -53,11 +53,12 @@ class Model(scope: CoroutineScope) : ViewModel() {
         }
     }
 
-    fun onCarPass() {
+    private fun onCarPass() {
         if (timerState.value == TimerState.WAIT_FOR_CAR_FIRST_PASS) {
             timeElapsed.value = 0.0
             timerState.value = TimerState.RUNNING
             timerLogic.start()
+            Log.d("Model", "Car pass, start timer")
         } else {
             if (timeElapsed.value - lastCarPassElapsed.value > 1) {
                 recordLap()
@@ -74,7 +75,10 @@ class Model(scope: CoroutineScope) : ViewModel() {
         lapTimes.add(lapTime)
         lapCount.value = lapTimes.size
 
+        Log.d("Model", "Lap $lapCount: ${"%.2f".format(lapTime)}s")
+
         if (targetLapCount.value > 0 && lapCount.value >= targetLapCount.value) {
+            Log.d("Model", "Target lap count reached, stop record.")
             stop()
         }
     }
@@ -100,5 +104,9 @@ class Model(scope: CoroutineScope) : ViewModel() {
         lapTimes.clear()
         analysisSkippedFrameCount.value = 0
         carAnalyzer.reset()
+    }
+
+    fun debugInfo() : String {
+        return "diff:" + "%.2f".format(carAnalyzer.curDiff.doubleValue) // "%.2f".format(carAnalyzer.curDiff)
     }
 }

@@ -78,7 +78,10 @@ fun AppContent(
             )
             Timer(model);
 
-            Spacer(modifier = Modifier.height(150.dp))
+            Spacer(modifier = Modifier.height(130.dp))
+
+            Text(text = model.debugInfo(),
+                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp))
         }
     }
 }
