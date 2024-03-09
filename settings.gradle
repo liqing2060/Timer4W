@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Timer4W"
 include ':app'
+include ':sdk'
