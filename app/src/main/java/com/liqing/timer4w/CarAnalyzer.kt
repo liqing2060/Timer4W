@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableDoubleStateOf
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import org.opencv.video.BackgroundSubtractorMOG2
 import org.opencv.video.Video
@@ -67,9 +68,15 @@ class CarAnalyzer(
     }
 
     private fun detectCarAdvanced(currentFrame: Mat): Boolean {
+
+        val resizedFrame = Mat()
+        val scaleFactor = 0.5 // 缩小到50%的分辨率
+        Imgproc.resize(currentFrame, resizedFrame, Size(), scaleFactor, scaleFactor, Imgproc.INTER_AREA)
+
         // 转换当前帧为灰度图
         val grayFrame = Mat()
-        Imgproc.cvtColor(currentFrame, grayFrame, Imgproc.COLOR_BGR2GRAY)
+        Imgproc.cvtColor(resizedFrame, grayFrame, Imgproc.COLOR_BGR2GRAY)
+        resizedFrame.release()
 
         // 步骤1：背景减除
         val fgMask = Mat()
@@ -83,8 +90,8 @@ class CarAnalyzer(
         grayFrame.copyTo(foreground, fgMask)
 
         // 如果背景变化太大，可能是因为拿着相机移动
-        val BACKGROUND_CHANGE_THRESHOLD = 0.2
-        if (prevForeground == null || backgroundDiff.doubleValue > BACKGROUND_CHANGE_THRESHOLD) {
+        val bgChangeThreshold = 0.2
+        if (prevForeground == null || backgroundDiff.doubleValue > bgChangeThreshold) {
             prevForeground?.release() // 释放前一帧前景图像资源
             prevForeground = foreground.clone()
             fgMask.release()
