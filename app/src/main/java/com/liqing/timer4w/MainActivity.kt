@@ -22,11 +22,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -53,7 +51,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun AppContent(model: Model = Model()) {
+fun AppContent(model: Model = Model(rememberCoroutineScope())) {
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CameraPreview(model, modifier = Modifier.weight(1f).height(200.dp).fillMaxWidth())
@@ -64,79 +62,79 @@ fun AppContent(model: Model = Model()) {
 
 @Composable
 fun CameraPreview(model: Model, modifier: Modifier = Modifier) {
-    val startCamera by model.startTimer
     val context = LocalContext.current
     val permissionState = remember { mutableStateOf(ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) }
 
-    // 创建一个启动器用于请求权限
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted ->
-            if (isGranted) {
-                permissionState.value = true
-            } else {
-                permissionState.value = false
-                // 处理未授权的情况
+    Box(modifier = modifier) {
+        if (!model.isStopped()) {
+            // 创建一个启动器用于请求权限
+            val permissionLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.RequestPermission(),
+                onResult = { isGranted ->
+                    permissionState.value = isGranted
+                }
+            )
+
+            // 检查权限并可能请求权限
+            LaunchedEffect(Unit) {
+                if (!permissionState.value) {
+                    permissionLauncher.launch(android.Manifest.permission.CAMERA)
+                }
+            }
+
+            if (permissionState.value) {
+                if (model.timerState.value == Model.TimerState.START_CAMERA) {
+                    model.onCameraPreviewStart()
+                    model.onCarPass() // TODO 根据相机画面判断车辆是否通过
+                }
+
+                // 权限被授予，显示相机预览
+                AndroidView(factory = { ctx ->
+                    PreviewView(ctx).also { previewView ->
+                        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                        cameraProviderFuture.addListener({
+                            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+                            val preview = CameraXPreview.Builder().build().also {
+                                it.setSurfaceProvider(previewView.surfaceProvider)
+                            }
+                            try {
+                                // 默认选择后置相机
+                                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+                                cameraProvider.unbindAll() // 在绑定之前解除绑定
+                                cameraProvider.bindToLifecycle(context as LifecycleOwner, cameraSelector, preview)
+                            } catch(e: Exception) {
+                                e.printStackTrace()
+                            }
+                        }, ContextCompat.getMainExecutor(context))
+                    }
+                }, modifier = Modifier.fillMaxSize()) // 确保预览填满Box
+
+                return
             }
         }
-    )
 
-    // 检查权限并可能请求权限
-    LaunchedEffect(Unit) {
-        if (!permissionState.value) {
-            permissionLauncher.launch(android.Manifest.permission.CAMERA)
-        }
-    }
-
-    Box(modifier = modifier) {
-        if (startCamera && permissionState.value) {
-            // 权限被授予，显示相机预览
-            AndroidView(factory = { ctx ->
-                PreviewView(ctx).also { previewView ->
-                    val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
-                    cameraProviderFuture.addListener({
-                        val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
-                        val preview = CameraXPreview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
-                        }
-                        try {
-                            // 默认选择后置相机
-                            val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-                            cameraProvider.unbindAll() // 在绑定之前解除绑定
-                            cameraProvider.bindToLifecycle(context as LifecycleOwner, cameraSelector, preview)
-                        } catch(e: Exception) {
-                            e.printStackTrace()
-                        }
-                    }, ContextCompat.getMainExecutor(context))
-                }
-            }, modifier = Modifier.fillMaxSize()) // 确保预览填满Box
+        val tipText: String = if (model.timerState.value == Model.TimerState.START_CAMERA) {
+            "Wait for the camera to start."
         } else {
-            // 权限未被授予或者相机没有开始，显示文本提示
-            Text(
-                text = if (!permissionState.value) "No camera permission yet" else "Press start to record.",
-                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
-                modifier = Modifier.align(Alignment.Center)
-            )
+            "Press start to record."
         }
+
+        // 权限未被授予或者相机没有开始，显示文本提示
+        Text(
+            text = tipText,
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
+            modifier = Modifier.align(Alignment.Center)
+        )
     }
 }
 
 @Composable
 fun Timer(model: Model) {
-    val startCamera by model.startTimer
-    var timeElapsed by remember { mutableStateOf(0.0) }
-    val scope = rememberCoroutineScope()
-
-    // 创建TimerLogic实例
-    val timerLogic = remember { TimerLogic(update = { time ->
-        timeElapsed = time
-    }, coroutineScope = scope) }
-
     Spacer(modifier = Modifier.height(24.dp))
 
     // 显示计时器时间
     Text(
-        text = "${"%.2f".format(timeElapsed)} s",
+        text = "${"%.2f".format(model.getTimeElapsed())} s",
         style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
     )
 
@@ -145,17 +143,16 @@ fun Timer(model: Model) {
     // 开始/停止按钮
     Button(
         onClick = {
-            model.toggleTimer()
-            if (startCamera) {
-                timerLogic.start()
+            if (model.isStopped()) {
+                model.start()
             } else {
-                timerLogic.stop()
+                model.stop()
             }
         },
         modifier = Modifier.size(width = 240.dp, height = 100.dp)
     ) {
         Text(
-            text = if (startCamera) "Stop" else "Start",
+            text = if (model.isStopped()) "Start" else "Stop",
             style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
         )
     }
