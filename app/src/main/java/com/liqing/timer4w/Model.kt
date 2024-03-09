@@ -1,33 +1,49 @@
 package com.liqing.timer4w
 
+import CarAnalyzer
+import androidx.camera.core.ImageProxy
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CoroutineScope
 
-class Model(private val scope: CoroutineScope) : ViewModel() {
+class Model(scope: CoroutineScope) : ViewModel() {
     enum class TimerState {
         START_CAMERA, WAIT_FOR_CAR_FIRST_PASS, RUNNING, STOPPED
     }
 
     val timerState = mutableStateOf(TimerState.STOPPED)
+
     private var timeElapsed = mutableStateOf(0.0)
     // 创建TimerLogic实例
     private val timerLogic = TimerLogic(update = { time ->
         timeElapsed.value = time
     }, coroutineScope = scope)
 
+    private val carAnalyzer = CarAnalyzer(diffThreshold = 15.0, onCarDetected = {
+        onCarPass()
+    })
+    private val lastCarPassElapsed = mutableStateOf(0.0)
+    val lapCount = mutableStateOf(0)
+    val targetLapCount = mutableStateOf(0)
+    private val lastLapTime = mutableStateOf(0.0)
+    val lapTimes = mutableListOf<Double>()
+
     fun getTimeElapsed(): Double = timeElapsed.value
 
     fun isStopped() = timerState.value == TimerState.STOPPED
 
     fun start() {
-        timeElapsed.value = 0.0
+        resetData()
         timerState.value = TimerState.START_CAMERA
     }
 
     fun onCameraPreviewStart() {
-        timeElapsed.value = 0.0
+        resetData()
         timerState.value = TimerState.WAIT_FOR_CAR_FIRST_PASS
+    }
+
+    fun analysis(imageProxy: ImageProxy) {
+        carAnalyzer.analyze(imageProxy)
     }
 
     fun onCarPass() {
@@ -35,12 +51,45 @@ class Model(private val scope: CoroutineScope) : ViewModel() {
             timeElapsed.value = 0.0
             timerState.value = TimerState.RUNNING
             timerLogic.start()
+        } else {
+            if (timeElapsed.value - lastCarPassElapsed.value > 1) {
+                recordLap()
+            } else {
+                // Ignore the car pass event if it happens within 1 second
+            }
         }
+    }
+
+    private fun recordLap() {
+        lastCarPassElapsed.value = timeElapsed.value
+        val lapTime = timeElapsed.value - lastLapTime.value
+        lastLapTime.value = timeElapsed.value
+        lapTimes.add(lapTime)
+        lapCount.value = lapTimes.size
+
+        if (targetLapCount.value > 0 && lapCount.value >= targetLapCount.value) {
+            stop()
+        }
+    }
+
+    fun fastestLap(): Double? {
+        return lapTimes.minOrNull()
+    }
+
+    fun averageLap(): Double {
+        return lapTimes.average()
     }
 
     fun stop() {
         timeElapsed.value = 0.0
         timerState.value = TimerState.STOPPED
         timerLogic.stop()
+    }
+
+    private fun resetData() {
+        timeElapsed.value = 0.0
+        lastCarPassElapsed.value = 0.0
+        lapCount.value = 0
+        lapTimes.clear()
     }
 }
