@@ -23,7 +23,6 @@ class Model(scope: CoroutineScope) : ViewModel() {
     private val carAnalyzer = CarAnalyzer(diffThreshold = 0.5, onCarDetected = {
         onCarPass()
     })
-    private val analysisSkippedFrameCount = mutableStateOf(0)
 
     private val lastCarPassElapsed = mutableStateOf(0.0)
     val lapCount = mutableStateOf(0)
@@ -47,10 +46,7 @@ class Model(scope: CoroutineScope) : ViewModel() {
 
     fun analysis(imageProxy: ImageProxy) {
 //        Log.d("Model", "Analysis")
-        analysisSkippedFrameCount.value += 1
-        if (analysisSkippedFrameCount.value >= 10) {
-            carAnalyzer.analyze(imageProxy)
-        }
+        carAnalyzer.analyze(imageProxy)
     }
 
     private fun onCarPass() {
@@ -102,7 +98,6 @@ class Model(scope: CoroutineScope) : ViewModel() {
         lastCarPassElapsed.value = 0.0
         lapCount.value = 0
         lapTimes.clear()
-        analysisSkippedFrameCount.value = 0
         carAnalyzer.reset()
     }
 

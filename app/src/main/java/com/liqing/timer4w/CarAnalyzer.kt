@@ -3,6 +3,7 @@ import android.util.Log
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.compose.runtime.mutableDoubleStateOf
+import androidx.compose.runtime.mutableStateOf
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -21,6 +22,7 @@ class CarAnalyzer(
     private var prevForeground: Mat? = null
     var speed = mutableDoubleStateOf(0.0)
     var backgroundDiff = mutableDoubleStateOf(0.0)
+    private val skippedFrameCount = mutableStateOf(0)
 
     private fun imageProxyToMat(image: ImageProxy): Mat? {
         if (image.format == ImageFormat.YUV_420_888) {
@@ -91,7 +93,8 @@ class CarAnalyzer(
 
         // 如果背景变化太大，可能是因为拿着相机移动
         val bgChangeThreshold = 0.2
-        if (prevForeground == null || backgroundDiff.doubleValue > bgChangeThreshold) {
+        skippedFrameCount.value += 1
+        if (prevForeground == null || backgroundDiff.doubleValue > bgChangeThreshold || skippedFrameCount.value <= 30) {
             prevForeground?.release() // 释放前一帧前景图像资源
             prevForeground = foreground.clone()
             fgMask.release()
@@ -135,7 +138,7 @@ class CarAnalyzer(
         val avgMotionMagnitude = Math.sqrt(avgX * avgX + avgY * avgY) // 平均运动向量的大小，可以用来估计速度
         speed.doubleValue = avgMotionMagnitude
 
-        Log.d("CarAnalyzer", "avgMotionMagnitude: " + "%.2f".format(speed.doubleValue))
+        Log.d("CarAnalyzer", "speed: " + "%.2f".format(speed.doubleValue))
 
         // 根据平均运动向量的大小决定是否检测到高速通过的四驱车
         if (avgMotionMagnitude >= diffThreshold) {
@@ -170,5 +173,6 @@ class CarAnalyzer(
         prevForeground = null;
         speed.doubleValue = 0.0
         backgroundDiff.doubleValue = 0.0
+        skippedFrameCount.value = 0
     }
 }

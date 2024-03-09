@@ -73,12 +73,15 @@ fun AppContent(
                 cameraExecutor,
                 modifier = Modifier
                     .weight(1f)
-                    .height(200.dp)
+                    .height(180.dp)
                     .fillMaxWidth()
             )
+
+            Spacer(modifier = Modifier.height(20.dp))
+
             Timer(model);
 
-            Spacer(modifier = Modifier.height(130.dp))
+            Spacer(modifier = Modifier.height(100.dp))
 
             Text(text = model.debugInfo(),
                 style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp))
@@ -118,7 +121,6 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
             if (permissionState.value) {
                 if (model.timerState.value == Model.TimerState.START_CAMERA) {
                     model.onCameraPreviewStart()
-//                    model.onCarPass() // TODO 根据相机画面判断车辆是否通过
                 }
 
                 // 权限被授予，显示相机预览
@@ -175,8 +177,6 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
 @Composable
 fun Timer(model: Model) {
 
-    Spacer(modifier = Modifier.height(24.dp))
-
     val tipText: String = when (model.timerState.value) {
         Model.TimerState.START_CAMERA -> {
             "Wait for the camera to start."
@@ -201,7 +201,7 @@ fun Timer(model: Model) {
         style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
     )
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(20.dp))
 
     // 显示计时器时间
     Text(
@@ -209,7 +209,7 @@ fun Timer(model: Model) {
         style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
     )
 
-    Spacer(modifier = Modifier.height(24.dp))
+    Spacer(modifier = Modifier.height(20.dp))
 
     // 开始/停止按钮
     Button(
