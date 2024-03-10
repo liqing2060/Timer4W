@@ -73,7 +73,15 @@ class CarAnalyzer(
 
         val resizedFrame = Mat()
         val scaleFactor = 0.5 // 缩小到50%的分辨率
-        Imgproc.resize(currentFrame, resizedFrame, Size(), scaleFactor, scaleFactor, Imgproc.INTER_AREA)
+        Imgproc.resize(
+            currentFrame,
+            resizedFrame,
+            Size(),
+            scaleFactor,
+            scaleFactor,
+            Imgproc.INTER_AREA
+        )
+//        val resizedFrame = currentFrame
 
         // 转换当前帧为灰度图
         val grayFrame = Mat()
@@ -85,11 +93,19 @@ class CarAnalyzer(
         backgroundSubtractor.apply(grayFrame, fgMask)
 
         // 步骤2：计算整体变化量
-        backgroundDiff.doubleValue = Core.countNonZero(fgMask).toDouble() / (fgMask.rows() * fgMask.cols())
+        backgroundDiff.doubleValue =
+            Core.countNonZero(fgMask).toDouble() / (fgMask.rows() * fgMask.cols())
 
         // 步骤3：提取前景
         val foreground = Mat()
         grayFrame.copyTo(foreground, fgMask)
+
+        // 用于形态学操作的核
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(5.0, 5.0))
+        // 腐蚀
+        Imgproc.erode(fgMask, fgMask, kernel)
+        // 膨胀
+        Imgproc.dilate(fgMask, fgMask, kernel)
 
         // 如果背景变化太大，可能是因为拿着相机移动
         val bgChangeThreshold = 0.2
@@ -116,7 +132,7 @@ class CarAnalyzer(
         return ret
     }
 
-    private fun analyzeOpticalFlow(flow: Mat) : Boolean {
+    private fun analyzeOpticalFlow(flow: Mat): Boolean {
         // flow 是一个包含了运动向量的 Mat，其中 flow.get(y, x) 返回一个包含 dx 和 dy 的 double 数组，表示该点的运动。
 
         var sumX = 0.0

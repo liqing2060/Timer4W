@@ -13,9 +13,11 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -79,30 +82,40 @@ fun AppContent(
     model: Model = Model(rememberCoroutineScope()),
     cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 ) {
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+    val configuration = LocalConfiguration.current
+    val screenWidth = configuration.screenWidthDp.dp
+    val screenHeight = configuration.screenHeightDp.dp
+    model.scale.value = screenWidth.value / 411.0
+    model.space.value = (20.0 * model.scale.value).dp
+    model.fontSize.value = (20.0 * model.scale.value).sp
+    Log.d("AppContent", "Screen width: $screenWidth, height: $screenHeight, scale: ${model.scale.value}, space: ${model.space.value}, font size: ${model.fontSize.value}")
+
+    Surface(modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background)
+    {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CameraPreview(
                 model,
                 cameraExecutor,
                 modifier = Modifier
-                    .height(320.dp)
+                    .height((320 * model.scale.value).dp)
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape((10 * model.scale.value).dp))
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(model.space.value))
 
             LapInfo(model)
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(model.space.value))
 
             Buttons(model, sharedPreferences)
 
-            Spacer(modifier = Modifier.height(100.dp))
+            Spacer(Modifier.weight(1f))
 
             Text(
                 text = model.debugInfo(),
-                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+                style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = model.fontSize.value)
             )
         }
     }
@@ -184,18 +197,16 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
         }
 
         if (model.isStopped() || !permissionState.value) {
-            var tipString = "Camera Preview"
-            var fontSize = 20.sp
             // 如果有圈数数据，展示详细的信息
             if (model.lapCount.value > 0) {
-                fontSize = 16.sp
-                tipString = "Lap Details"
+                var tipString = "Lap Details"
                 for (lap in model.lapTimes) {
-                    tipString += "\nLap ${lap.lapIndex}: ${"%.2f".format(lap.lapTime)} s" + " Speed: ${"%.2f".format(lap.speed)}" + " Diff: ${"%.2f".format(lap.diff)}"
+                    tipString += "\nLap ${lap.lapIndex}: ${"%.2f".format(lap.lapTime)} s" + " | speed: ${"%.2f".format(lap.speed)}" + " diff: ${"%.2f".format(lap.diff)}"
                 }
+                val fontSize = (15 * model.scale.value).sp
                 Column(modifier = Modifier
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)) {
+                    .padding((16 * model.scale.value).dp)) {
                     Text(
                         text = tipString,
                         style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
@@ -204,8 +215,8 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
             } else {
                 // 权限未被授予或者相机没有开始，显示文本提示
                 Text(
-                    text = tipString,
-                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize),
+                    text = "Camera Preview",
+                    style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = model.fontSize.value),
                     modifier = Modifier.align(Alignment.Center)
                 )
             }
@@ -216,28 +227,29 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
 @Composable
 fun LapInfo(model: Model) {
     Column(
-        modifier = Modifier.padding(16.dp),
+        modifier = Modifier.padding((16 * model.scale.value).dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        val fontSize = (16 * model.scale.value).sp
         Text(
             text = "Lap Count: ${model.lapCount.value}" + if (model.targetLapCount.value > 0) "/${model.targetLapCount.value}" else "",
-            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
         )
         Text(
             text = "Total Time: ${"%.2f".format(model.getTimeElapsed())} s",
-            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
         )
         Text(
             text = "Current Lap: ${"%.2f".format(model.getCurLapTimeElapsed())} s",
-            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
         )
         Text(
             text = "Average Lap: ${"%.2f".format(model.averageLap())} s",
-            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
         )
         Text(
             text = "Fastest Lap: ${"%.2f".format(model.fastestLap())} s",
-            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
         )
     }
 }
@@ -265,10 +277,10 @@ fun Buttons(model: Model, sharedPreferences: SharedPreferences?) {
     }
     Text(
         text = tipText,
-        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp),
+        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = model.fontSize.value),
     )
 
-    Spacer(modifier = Modifier.height(20.dp))
+    Spacer(modifier = Modifier.height(model.space.value))
 
     // 开始/停止按钮
     Button(
@@ -279,15 +291,15 @@ fun Buttons(model: Model, sharedPreferences: SharedPreferences?) {
                 model.stop()
             }
         },
-        modifier = Modifier.size(width = 240.dp, height = 100.dp)
+        modifier = Modifier.size(width = (240 * model.scale.value).dp, height = (100 * model.scale.value).dp)
     ) {
         Text(
             text = if (model.isStopped()) "Start" else "Stop",
-            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 20.sp)
+            style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = model.fontSize.value)
         )
     }
 
-    Spacer(modifier = Modifier.height(20.dp))
+    Spacer(modifier = Modifier.height(model.space.value))
 
     // 目标圈数
     val lapOptions = List(11) { it * 10 }

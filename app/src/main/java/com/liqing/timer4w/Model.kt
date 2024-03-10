@@ -4,6 +4,8 @@ import CarAnalyzer
 import android.util.Log
 import androidx.camera.core.ImageProxy
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.CoroutineScope
 
@@ -36,7 +38,11 @@ class Model(scope: CoroutineScope) : ViewModel() {
     val lapCount = mutableStateOf(0)
     val lastLapTime = mutableStateOf(0.0)
     val lapTimes = mutableListOf<LapInfo>()
-    val minLapInterval = mutableStateOf(0.3)
+    val minLapInterval = mutableStateOf(0.8)
+
+    val fontSize = mutableStateOf(20.sp)
+    val space = mutableStateOf(20.dp)
+    val scale = mutableStateOf(1.0)
 
     fun getTimeElapsed(): Double = timeElapsed.value
 
@@ -95,11 +101,11 @@ class Model(scope: CoroutineScope) : ViewModel() {
     }
 
     fun fastestLap(): Double? {
-        return lapTimes.minByOrNull { it.lapTime }?.lapTime
+        return if (lapTimes.size == 0) 0.0 else lapTimes.minByOrNull { it.lapTime }?.lapTime
     }
 
     fun averageLap(): Double {
-        return lapTimes.map { it.lapTime }.average()
+        return if (lapTimes.size == 0) 0.0 else lapTimes.map { it.lapTime }.average()
     }
 
     fun stop() {
