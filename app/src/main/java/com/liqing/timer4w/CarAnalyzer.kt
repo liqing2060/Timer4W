@@ -15,6 +15,7 @@ import org.opencv.video.Video
 class CarAnalyzer(
     val diffThreshold: Double,
     private val onCarDetected: () -> Unit,
+    private val onImageAnalysis: () -> Unit? = { null },
     private val backgroundSubtractor: BackgroundSubtractorMOG2 = Video.createBackgroundSubtractorMOG2()
 ) : ImageAnalysis.Analyzer {
 
@@ -22,6 +23,7 @@ class CarAnalyzer(
     private var prevForeground: Mat? = null
     var speed = mutableDoubleStateOf(0.0)
     var backgroundDiff = mutableDoubleStateOf(0.0)
+    var carPassedThisFrame = mutableStateOf(false)
     private val skippedFrameCount = mutableStateOf(0)
 
     private fun imageProxyToMat(image: ImageProxy): Mat? {
@@ -63,8 +65,10 @@ class CarAnalyzer(
             val mean = Core.mean(diff).`val`[0]
             diff.release()
             speed.doubleValue = mean
-            Log.d("CarAnalyzer", "Mean diff: " + "%.2f".format(speed.doubleValue))
-            return mean > diffThreshold
+            carPassedThisFrame.value = mean > diffThreshold
+            Log.d("CarAnalyzer", "Mean diff: " + "%.2f".format(speed.doubleValue) + ", carPassedThisFrame: " + carPassedThisFrame.value)
+            onImageAnalysis()
+            return carPassedThisFrame.value
         }
         return false
     }
@@ -122,14 +126,15 @@ class CarAnalyzer(
         Video.calcOpticalFlowFarneback(prevForeground, foreground, flow, 0.5, 3, 15, 3, 5, 1.2, 0)
 
         // 分析光流结果，判断四驱车运动
-        val ret = analyzeOpticalFlow(flow)
+        carPassedThisFrame.value = analyzeOpticalFlow(flow)
+        onImageAnalysis()
         flow.release()
         prevForeground!!.release() // 释放前一帧前景资源
         prevForeground = foreground // 更新前一帧为当前帧
 
         fgMask.release()
         grayFrame.release()
-        return ret
+        return carPassedThisFrame.value
     }
 
     private fun analyzeOpticalFlow(flow: Mat): Boolean {
@@ -153,17 +158,17 @@ class CarAnalyzer(
         val avgY = sumY / count
         val avgMotionMagnitude = Math.sqrt(avgX * avgX + avgY * avgY) // 平均运动向量的大小，可以用来估计速度
         speed.doubleValue = avgMotionMagnitude
+        carPassedThisFrame.value = avgMotionMagnitude >= diffThreshold
 
-        Log.d("CarAnalyzer", "speed: " + "%.2f".format(speed.doubleValue))
+        Log.d("CarAnalyzer", "speed: " + "%.2f".format(speed.doubleValue) + ", carPassedThisFrame: " + carPassedThisFrame.value)
 
         // 根据平均运动向量的大小决定是否检测到高速通过的四驱车
-        if (avgMotionMagnitude >= diffThreshold) {
+        if (carPassedThisFrame.value) {
             // 如果平均速度超过阈值，认为检测到四驱车高速通过
             Log.d("CarAnalyzer", "Detected high-speed moving car.")
-            return true;
         }
 
-        return false
+        return carPassedThisFrame.value
     }
 
     override fun analyze(imageProxy: ImageProxy) {

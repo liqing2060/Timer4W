@@ -79,7 +79,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun AppContent(
     sharedPreferences: SharedPreferences?,
-    model: Model = Model(rememberCoroutineScope()),
+    model: Model = Model(rememberCoroutineScope(), LocalContext.current),
     cameraExecutor: ExecutorService = Executors.newSingleThreadExecutor()
 ) {
     val configuration = LocalConfiguration.current
@@ -88,6 +88,7 @@ fun AppContent(
     model.scale.value = screenWidth.value / 411.0
     model.space.value = (20.0 * model.scale.value).dp
     model.fontSize.value = (20.0 * model.scale.value).sp
+    model.init()
     Log.d("AppContent", "Screen width: $screenWidth, height: $screenHeight, scale: ${model.scale.value}, space: ${model.space.value}, font size: ${model.fontSize.value}")
 
     Surface(modifier = Modifier.fillMaxSize(),
@@ -152,10 +153,6 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
             }
 
             if (permissionState.value) {
-                if (model.timerState.value == Model.TimerState.START_CAMERA) {
-                    model.onCameraPreviewStart()
-                }
-
                 // 权限被授予，显示相机预览
                 AndroidView(factory = { ctx ->
                     PreviewView(ctx).also { previewView ->
@@ -193,6 +190,22 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
                         }, ContextCompat.getMainExecutor(context))
                     }
                 }, modifier = Modifier.fillMaxSize()) // 确保预览填满Box
+
+                if (model.timerState.value == Model.TimerState.START_CAMERA) {
+                    model.onCameraPreviewStart()
+                } else if (model.timerState.value == Model.TimerState.STOP) {
+                    if (permissionState.value) {
+                        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+                        cameraProviderFuture.addListener({
+                            // 获取 CameraProvider
+                            val cameraProvider: ProcessCameraProvider = cameraProviderFuture.get()
+
+                            // 当不再需要使用相机时，解除所有用例的绑定
+                            cameraProvider.unbindAll()
+                        }, ContextCompat.getMainExecutor(context))
+                    }
+                    model.onStopFinish()
+                }
             }
         }
 
@@ -204,12 +217,24 @@ fun CameraPreview(model: Model, cameraExecutor: ExecutorService, modifier: Modif
                     tipString += "\nLap ${lap.lapIndex}: ${"%.2f".format(lap.lapTime)} s" + " | speed: ${"%.2f".format(lap.speed)}" + " diff: ${"%.2f".format(lap.diff)}"
                 }
                 val fontSize = (15 * model.scale.value).sp
+
+                var debugString = "Debug Info"
+                for (info in model.imageAnalysisInfos) {
+                    debugString += "\nLap ${info.lapIndex}: ${"%.2f".format(info.lapTime)} s" + " | sp: ${"%.2f".format(info.speed)}" + " diff: ${"%.2f".format(info.diff)}" + " car: ${info.carPassTimeFrame}"
+                }
+                val debugFontSize = (12 * model.scale.value).sp
+
                 Column(modifier = Modifier
                     .verticalScroll(rememberScrollState())
                     .padding((16 * model.scale.value).dp)) {
                     Text(
                         text = tipString,
                         style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = fontSize)
+                    )
+                    Spacer(modifier = Modifier.height(model.space.value))
+                    Text(
+                        text = debugString,
+                        style = TextStyle(fontFamily = FontFamily.Monospace, fontSize = debugFontSize)
                     )
                 }
             } else {
